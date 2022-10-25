@@ -1,0 +1,10 @@
+---
+title: "First ggplot"
+author: "WH Lau"
+
+Hello! this is our first plot! 
+
+```{r}
+library(ggplot2)
+```
+
