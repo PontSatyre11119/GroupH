@@ -1,0 +1,160 @@
+---
+title: "EEB313-Analysis"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, message=F, echo = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(maps)
+library(sp)
+library(sf)
+library(s2)
+library(rgdal)
+library(mapproj)
+library(ggfortify)
+library(usethis)
+library(ggmap)
+
+```
+
+```{r read_data}
+morph <- read.csv("Morphology_metadata2.csv")
+```
+
+```{r PCA}
+morph_means <- morph %>% 
+  group_by(Species) %>%
+  filter(!is.na(Wing) & !is.na(Culmen) & !is.na(Mass)) %>%
+  summarize(mean(Wing), mean(Culmen), mean(Mass))
+
+df <- data.frame(morph_means[,-1])
+
+morph_pc <- prcomp(df, scale = TRUE, center = TRUE, retx = T)
+summary(morph_pc)
+
+morph_pc$rotation <- -1*morph_pc$rotation
+morph_pc$rotation
+
+autoplot(morph_pc, data = morph_means, colour = 'Species', loadings = TRUE, loadings.label = TRUE) +
+labs(title = "Morph Biplot for Hawaii 'Big' Island") +
+theme_classic()
+
+plot(morph_pc)
+```
+
+
+```{r spatial_view, message = F}
+# Identifies ESPG as 6334.
+morph_sf <- st_as_sf(morph, coords = c("UTM_X", "UTM_Y"), crs = 6334)
+
+# Transforms coordinates to standard lat-lon format.
+morph_wgs84 <- st_transform(morph_sf, crs = 4326)
+
+# Converts geometry class into separate lat-lon columns.
+morph <- morph_wgs84 %>% 
+  extract(geometry, c('lon', 'lat'), '\\((.*), (.*)\\)', convert = TRUE) %>% 
+  as.data.frame()
+
+# Selects for relavent columns.
+morph_spa <- morph %>% 
+  select(Species, Date, Sex, Wing, Culmen, Mass, lat, lon)
+
+# Previews the data.
+head(morph_spa)
+
+# Uses ggmap to extract map of Hawaii.
+register_google(key= "AIzaSyD_ezuKCIh45NhZUh45loVm4bNhzlVAtIw")
+map_hi <- get_map(location = 'Island of Hawaii', zoom = 9, source = "stamen", maptype = "toner-lite")
+
+# List of natural and anthropogenic effects that can be analyzed.
+effects <- list(Mauna_Loa = c(geocode("Mauna Loa"), Type = "Volcano"),
+                Kīlauea = c(geocode("Kīlauea"), Type = "Volcano"),
+                Hilo = c(geocode("Hilo"), Type = "Urban"),
+                Waimea = c(geocode("Waimea"), Type = "Urban"),
+                Kona = c(geocode("Kona"), Type = "Urban"),
+                Hualalai = c(geocode("Hualalai"), Type = "Mountain"),
+                Mauna_Kea = c(geocode("Mauna Kea Access Rd, Hilo, HI 96720, United States"), Type = "Mountain"),
+                Pohakuloa = c(geocode("Pohakuloa Training Area"), Type = "Military"),
+                Army_Reserve = c(geocode("470 W Lanikaula St, Hilo, HI 96720, United States"), Type = "Military"))
+
+# Formats list as a dataframe.
+effects <- as.data.frame(bind_rows(effects, .id = "Name"))
+
+# Plots the data.
+ggmap(map_hi) +
+  geom_count(data = morph_spa, aes(x = lon, y = lat), alpha = 0.5) +
+  labs(title = "Observations on \nHawaii 'Big' Island", x = "Longitude", y = "Latitude", size = "Number of \nObservations") +
+  geom_point(data = effects, aes(x = lon, y = lat, shape = Type), color = "Red")
+
+```
+
+```{r, eval = F, include = F}
+# An interactive map showing all the points.
+mapview(morph_wgs84$geometry, crs= "4326", grid = FALSE)
+```
+
+```{r}
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[9,3], effects[9,2]))
+dist_army<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_army)<-"Distance_Army"
+morph_spa<-cbind(morph_spa,dist_army)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[8,3], effects[8,2]))
+dist_Pohakuloa<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Pohakuloa)<-"Distance_Pohakuloa"
+morph_spa<-cbind(morph_spa,dist_Pohakuloa)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[7,3], effects[7,2]))
+dist_Mauna_Kea<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Mauna_Kea)<-"Distance_Mauna_Kea"
+morph_spa<-cbind(morph_spa,dist_Mauna_Kea)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[6,3], effects[6,2]))
+dist_Hualalai<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Hualalai)<-"Distance_Hualalai"
+morph_spa<-cbind(morph_spa,dist_Hualalai)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[5,3], effects[5,2]))
+dist_Kona<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Kona)<-"Distance_Kona"
+morph_spa<-cbind(morph_spa,dist_Kona)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[4,3], effects[4,2]))
+dist_Waimea<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Waimea)<-"Distance_Waimea"
+morph_spa<-cbind(morph_spa,dist_Waimea)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[3,3], effects[3,2]))
+dist_Hilo<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Hilo)<-"Distance_Hilo"
+morph_spa<-cbind(morph_spa,dist_Hilo)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[2,3], effects[3,2]))
+dist_Kīlauea<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Kīlauea)<-"Distance_Kīlauea"
+morph_spa<-cbind(morph_spa,dist_Kīlauea)
+
+observationpoints<-as.matrix(morph_spa[,7:8])
+army_base_point<-as.numeric(c(effects[1,3], effects[1,2]))
+dist_Mauna_Loa<-as.data.frame(spDistsN1(observationpoints,army_base_point,longlat=T))
+colnames(dist_Mauna_Loa)<-"Distance_Mauna_Loa"
+morph_spa<-cbind(morph_spa,dist_Mauna_Loa)
+
+
+```
+
+
